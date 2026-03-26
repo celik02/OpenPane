@@ -1,0 +1,12 @@
+{
+  "configurations": [
+    {
+      "name": "STM32F446RE",
+      "compileCommands": "${workspaceFolder}/compile_commands.json",
+      "compilerPath": "/usr/bin/arm-none-eabi-gcc",
+      "intelliSenseMode": "linux-gcc-arm",
+      "cStandard": "gnu11"
+    }
+  ],
+  "version": 4
+}
