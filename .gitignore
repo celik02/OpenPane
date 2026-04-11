@@ -1,4 +1,6 @@
 .cache
 .claude
 .metadata
+.vscode
+compile_commands.json
 build

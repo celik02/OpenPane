@@ -13,6 +13,7 @@ OPT   = -Og
 ######################################
 C_SOURCES = \
 src/main.c \
+src/systick.c \
 src/system_stm32f4xx.c \
 src/syscalls.c \
 src/sysmem.c
@@ -43,6 +44,7 @@ C_DEFS   = -DSTM32F446xx
 ROOT = $(abspath .)
 
 C_INCLUDES = \
+-I$(ROOT)/inc \
 -I$(ROOT)/CMSIS/core \
 -I$(ROOT)/CMSIS/device/Include
 
@@ -62,6 +64,17 @@ LDFLAGS  = $(MCU) -specs=nano.specs -T$(LDSCRIPT) -lc -lm -lnosys \
 ######################################
 # Build
 ######################################
+BEAR := $(shell command -v bear 2>/dev/null)
+
+ifdef BEAR
+ifndef BEAR_WRAP
+.DEFAULT_GOAL := _bear_wrap
+.PHONY: _bear_wrap
+_bear_wrap:
+	$(BEAR) -- $(MAKE) BEAR_WRAP=1 all
+endif
+endif
+
 all: $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).hex $(BUILD_DIR)/$(TARGET).bin
 
 OBJECTS  = $(addprefix $(BUILD_DIR)/,$(notdir $(C_SOURCES:.c=.o)))

@@ -1,7 +1,11 @@
 #include "stm32f4xx.h"
+#include "systick.h"
 
 int main(void)
 {
+    // initialize the SysTick timer.
+    systick_init();
+
     /* Enable GPIOA clock */
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
 
@@ -12,6 +16,6 @@ int main(void)
     while (1)
     {
         GPIOA->ODR ^= (1U << 5);
-        for (volatile uint32_t i = 0; i < 500000; i++);
+        systick_delay_ms(500);
     }
 }
