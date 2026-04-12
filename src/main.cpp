@@ -1,9 +1,10 @@
 #include "stm32f4xx.h"
-#include "systick.h"
+#include "systick.hpp"
+#include "rtos.hpp"
 
 int main(void)
 {
-    // initialize the SysTick timer.
+    init_scheduler_stack(SCHEDULER_STACK_START);
     systick_init();
 
     /* Enable GPIOA clock */
