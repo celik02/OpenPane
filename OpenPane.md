@@ -21,12 +21,12 @@
 ### Layer 2 — Task Stack Initialization
 
 * [X] Define `TaskControlBlock` struct (`sp` as first member, `func`, `state`, `name`, `stack_size`)
-* [ ] Implement `task_stack_init()` — fake the hardware exception entry stack frame
-  * [ ] Set xPSR = `0x01000000` (Thumb bit)
-  * [ ] Set PC = task function address
-  * [ ] Set LR = `0xFFFFFFFD` (EXC_RETURN, PSP, Thread mode)
-  * [ ] Zero out software-saved registers R4–R11 below the frame
-* [ ] Point `tcb->sp` to correct position after fake-stacking
+* [X] Implement `task_stack_init()` — fake the hardware exception entry stack frame
+  * [X] Set xPSR = `0x01000000` (Thumb bit)
+  * [X] Set PC = task function address
+  * [X] Set LR = `0xFFFFFFFD` (EXC_RETURN, PSP, Thread mode)
+  * [X] Zero out software-saved registers R4–R11 below the frame
+* [X] Point `tcb->sp` to correct position after fake-stacking
 * [ ] **Validate:** TCB stack pointer values look correct in GDB memory view (do NOT run scheduler yet)
 
 ### Layer 3 — PendSV Context Switch

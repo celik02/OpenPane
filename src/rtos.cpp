@@ -2,6 +2,35 @@
 #include "systick.hpp"
 #include "stm32f4xx.h"
 #include <cstdio>
+#include <stdint.h>
+
+uint32_t psp_of_tasks[MAX_TASKS] = {
+    T1_STACK_START,
+    T2_STACK_START,
+    T3_STACK_START,
+    T4_STACK_START,
+};
+
+uint32_t task_handles[MAX_TASKS] = {
+    (uint32_t)uart_task,
+    (uint32_t)led200_task,
+    (uint32_t)led500_task,
+    (uint32_t)dummy_task,
+};
+
+uint8_t current_task_index=0; // index of currently running task in task_handles and psp_of_tasks
+
+/* Enable UsageFault, BusFault, and MemManage fault handlers individually.
+ * By default these are all demoted to HardFault, which makes debugging harder —
+ * you lose the specific fault type and the dedicated status registers.
+ * Setting SHCSR bits promotes them so each fires its own handler with its own
+ * status register (CFSR, BFSR, MMFSR), making faults much easier to diagnose. */
+void enable_processor_faults(void)
+{
+    SCB->SHCSR |= SCB_SHCSR_USGFAULTENA_Msk   /* UsageFault: div-by-zero, unaligned access, etc. */
+               |  SCB_SHCSR_BUSFAULTENA_Msk    /* BusFault:   invalid memory access               */
+               |  SCB_SHCSR_MEMFAULTENA_Msk;   /* MemManage:  MPU violations                      */
+}
 
 /* __attribute__((naked)) suppresses the compiler-generated function prologue and epilogue
  * (no automatic push/pop of registers, no stack frame setup). This is required here because
@@ -20,11 +49,79 @@ __attribute__((naked)) void init_scheduler_stack(uint32_t sched_top_of_stack)
 }
 
 
-void init_tasks_stack(void){
+__attribute__((naked)) void PendSV_Handler(void)
+{
+    // __asm volatile (
+    //     "PUSH {LR}\n"           /* Save LR since we'll be using it to determine return mode */
+    //     "MRS R0, PSP\n"         /* Get current task's PSP value into R0 */
+    //     "BL save_psp_value\n"   /* Save it to the global array */
 
+    //     "BL update_next_task\n" /* Update current_task_index to the next task */
+
+    //     "BL get_psp_value\n"    /* Get next task's PSP value into R0 */
+    //     "MSR PSP, R0\n"         /* Set PSP to the next task's stack pointer */
+
+    //     "POP {LR}\n"            /* Restore LR */
+    //     "BX LR\n"               /* Return from exception, will switch to next task */
+    // );
 }
 
+/* Context switching works by saving/restoring a task's stack frame. When PendSV switches
+ * to a task, it expects to find a valid Cortex-M4 exception frame on that task's stack.
+ * Tasks that have never run have no such frame, so we plant a fake one here.
+ * This makes a brand-new task indistinguishable from a task that was previously interrupted,
+ * allowing the scheduler to treat all tasks uniformly from the very first switch. */
+void init_tasks_stack(void){
+    uint32_t *pPSP;
+    for (uint8_t i = 0; i < MAX_TASKS; ++i) {
+        pPSP = (uint32_t *)psp_of_tasks[i]; // Start of this task's stack
+        *(--pPSP) = 0x01000000; /* xPSR: Thumb bit must be set */
+        *(--pPSP) = (uint32_t)task_handles[i]; /* PC */
+        *(--pPSP) = 0xFFFFFFFD; /* LR: Return to Thread mode, use PSP after return */
+        /*reset all registers to 0 {R4–R11} */
+        for (int j = 0; j < 8; ++j) {
+            *(--pPSP) = 0;
+        }
+        psp_of_tasks[i] = (uint32_t)pPSP; /* Update the task's stack pointer to the new top of stack */
+    }
+}
 
+void save_psp_value(uint32_t current_psp_value){
+    psp_of_tasks[current_task_index] = current_psp_value;
+}
+
+__attribute__((naked)) uint32_t get_psp_value(){
+    return psp_of_tasks[current_task_index];
+}
+
+void update_next_task(void){
+    current_task_index = (current_task_index + 1) % MAX_TASKS;
+}
+
+/* Switch the active stack pointer from MSP to PSP.
+ * After reset the CPU uses MSP for everything. Calling this before starting the
+ * scheduler ensures tasks run on PSP, keeping task stacks isolated from the
+ * scheduler's MSP stack. Must be called after PSP is initialized for the first task. */
+__attribute__((naked)) void switch_sp_to_psp(void)
+{
+    //1. initialize PSP to the first task's stack pointer
+    __asm volatile ("PUSH {LR}"); // save LR since we're naked and will clobber it
+    __asm volatile ("BL get_psp_value"); // get current task's PSP value into R0
+    __asm volatile ("MSR PSP, R0"); // set PSP to the task's stack pointer
+    __asm volatile ("POP {LR}"); // restore LR
+
+    //2. switch to PSP by setting CONTROL register bit 1
+    __asm volatile (
+        "MRS R0, CONTROL\n"   /* Read CONTROL register into R0 */
+        "ORR R0, R0, #2\n"    /* Set bit 1 to select PSP */
+        "MSR CONTROL, R0\n"   /* Write back to CONTROL register */
+        "ISB\n"              /* Instruction Synchronization Barrier to ensure the change takes effect immediately */
+        "BX LR\n"           /* Return from function */
+        :
+        :
+        : "r0"  // clobber R0 since we're using it to manipulate CONTROL
+    );
+}
 
 void uart_task(void *)
 {

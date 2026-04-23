@@ -5,12 +5,17 @@
 #include "memory_map.h"
 
 using TaskFunc = void(*)(void*);
-uint32_t psp_of_tasks[MAX_TASKS] = {
-    T1_STACK_START,
-    T2_STACK_START,
-    T3_STACK_START,
-    T4_STACK_START,
-}; /* space for 4 tasks' stack pointers */
+
+/* Defined once in rtos.cpp — extern here to avoid multiple-definition errors
+ * when this header is included by more than one translation unit. */
+extern uint32_t psp_of_tasks[MAX_TASKS];
+extern uint32_t task_handles[MAX_TASKS];
+extern uint8_t current_task_index;
+
+void uart_task(void *);
+void led200_task(void *);
+void led500_task(void *);
+void dummy_task(void *);
 
 enum class TaskState : uint8_t {
     READY,
@@ -32,5 +37,10 @@ struct TCB {
 __attribute__((naked)) void init_scheduler_stack(uint32_t sched_top_of_stack);
 
 void init_tasks_stack(void);
+void update_next_task(void);
+void enable_processor_faults(void);
+__attribute__((naked)) void switch_sp_to_psp(void);
+__attribute__((naked)) uint32_t get_psp_value(void);
+__attribute__((naked)) void PendSV_Handler(void)
 
 #endif /* RTOS_HPP */

@@ -4,8 +4,13 @@
 
 int main(void)
 {
+
+    enable_processor_faults(); /* TODO  */
     init_scheduler_stack(SCHEDULER_STACK_START);
     systick_init();
+
+    init_tasks_stack();
+
 
     /* Enable GPIOA clock */
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
