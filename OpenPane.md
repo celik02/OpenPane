@@ -27,6 +27,13 @@
   * [X] Set LR = `0xFFFFFFFD` (EXC_RETURN, PSP, Thread mode)
   * [X] Zero out software-saved registers R4–R11 below the frame
 * [X] Point `tcb->sp` to correct position after fake-stacking
+* [ ] **Test infrastructure:** Add `tests/` directory with [doctest](https://github.com/doctest/doctest) single-header framework
+* [ ] **Test infrastructure:** Add `make test` target to Makefile (native `clang++` build, no ARM toolchain)
+* [ ] **Test:** Write `tests/test_rtos.cpp` — verify `init_tasks_stack()` fake frame layout
+  * [ ] xPSR = `0x01000000` for all tasks
+  * [ ] PC = correct task function address per task
+  * [ ] LR = `0xFFFFFFFD` (EXC_RETURN, PSP, Thread mode)
+  * [ ] R4–R11 slots below the frame are zero
 * [ ] **Validate:** TCB stack pointer values look correct in GDB memory view (do NOT run scheduler yet)
 
 ### Layer 3 — PendSV Context Switch
@@ -76,6 +83,8 @@
 ## Phase 2 — E-ink / Display via SPI-DMA
 
 **Validation gate:** Image or text rendered on display from a dedicated RTOS task; scheduler continues running other tasks during transfer.
+
+> **Before starting Phase 2:** Expand the test harness for all pure-logic code written from here onward — JSON parser, AT command parser, MQTT packet framing, CRC32. Hardware-specific layers (SPI, DMA, GPIO) do not need host tests; every data-processing layer does.
 
 ### Layer 1 — SPI Peripheral Init (Polling Mode)
 
