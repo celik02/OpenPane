@@ -1,21 +1,14 @@
 #include "rtos.hpp"
-#include "systick.hpp"
 #include "stm32f4xx.h"
 #include <cstdio>
 #include <stdint.h>
 
-uint32_t psp_of_tasks[MAX_TASKS] = {
-    T1_STACK_START,
-    T2_STACK_START,
-    T3_STACK_START,
-    T4_STACK_START,
-};
-
-uint32_t task_handles[MAX_TASKS] = {
-    (uint32_t)uart_task,
-    (uint32_t)led200_task,
-    (uint32_t)led500_task,
-    (uint32_t)dummy_task,
+TCB tasks[MAX_TASKS] = {
+    { (volatile uint32_t *)T1_STACK_START,   uart_task,   TaskState::READY, 0,   "uart",   (uint32_t *)(T1_STACK_START   - SIZEOF_STACK), SIZEOF_STACK, 0 },
+    { (volatile uint32_t *)T2_STACK_START,   led200_task, TaskState::READY, 1,   "led200", (uint32_t *)(T2_STACK_START   - SIZEOF_STACK), SIZEOF_STACK, 1 },
+    { (volatile uint32_t *)T3_STACK_START,   led500_task, TaskState::READY, 2,   "led500", (uint32_t *)(T3_STACK_START   - SIZEOF_STACK), SIZEOF_STACK, 2 },
+    { (volatile uint32_t *)T4_STACK_START,   dummy_task,  TaskState::READY, 3,   "dummy",  (uint32_t *)(T4_STACK_START   - SIZEOF_STACK), SIZEOF_STACK, 3 },
+    { (volatile uint32_t *)IDLE_STACK_START, idle_task,   TaskState::READY, 255, "idle",   (uint32_t *)(IDLE_STACK_START - SIZEOF_STACK), SIZEOF_STACK, 4 },
 };
 
 uint8_t current_task_index=0; // index of currently running task in task_handles and psp_of_tasks
@@ -51,19 +44,25 @@ __attribute__((naked)) void init_scheduler_stack(uint32_t sched_top_of_stack)
 
 __attribute__((naked)) void PendSV_Handler(void)
 {
-    // __asm volatile (
-    //     "PUSH {LR}\n"           /* Save LR since we'll be using it to determine return mode */
-    //     "MRS R0, PSP\n"         /* Get current task's PSP value into R0 */
-    //     "BL save_psp_value\n"   /* Save it to the global array */
+    __asm volatile (
+        "PUSH {LR}\n"              /* save EXC_RETURN — tells CPU how to return from exception */
 
-    //     "BL update_next_task\n" /* Update current_task_index to the next task */
+        /* Save current task */
+        "MRS R0, PSP\n"            /* R0 = current task's stack pointer */
+        "STMDB R0!, {R4-R11}\n"   /* push R4-R11 onto current task's stack; R0 updated */
+        "BL save_psp_value\n"      /* save updated PSP (R0) into tasks[current].stack_pointer */
 
-    //     "BL get_psp_value\n"    /* Get next task's PSP value into R0 */
-    //     "MSR PSP, R0\n"         /* Set PSP to the next task's stack pointer */
+        /* Switch to next task */
+        "BL update_next_task\n"    /* advance current_task_index */
 
-    //     "POP {LR}\n"            /* Restore LR */
-    //     "BX LR\n"               /* Return from exception, will switch to next task */
-    // );
+        /* Restore next task */
+        "BL get_psp_value\n"       /* R0 = tasks[next].stack_pointer */
+        "LDMIA R0!, {R4-R11}\n"   /* pop R4-R11 from next task's stack; R0 updated */
+        "MSR PSP, R0\n"            /* set PSP to next task's stack pointer */
+
+        "POP {LR}\n"               /* restore EXC_RETURN */
+        "BX LR\n"                  /* exception return — CPU pops hardware frame, jumps to next task's PC */
+    );
 }
 
 /* Context switching works by saving/restoring a task's stack frame. When PendSV switches
@@ -72,29 +71,33 @@ __attribute__((naked)) void PendSV_Handler(void)
  * This makes a brand-new task indistinguishable from a task that was previously interrupted,
  * allowing the scheduler to treat all tasks uniformly from the very first switch. */
 void init_tasks_stack(void){
-    uint32_t *pPSP;
     for (uint8_t i = 0; i < MAX_TASKS; ++i) {
-        pPSP = (uint32_t *)psp_of_tasks[i]; // Start of this task's stack
-        *(--pPSP) = 0x01000000; /* xPSR: Thumb bit must be set */
-        *(--pPSP) = (uint32_t)task_handles[i]; /* PC */
-        *(--pPSP) = 0xFFFFFFFD; /* LR: Return to Thread mode, use PSP after return */
-        /*reset all registers to 0 {R4–R11} */
-        for (int j = 0; j < 8; ++j) {
-            *(--pPSP) = 0;
-        }
-        psp_of_tasks[i] = (uint32_t)pPSP; /* Update the task's stack pointer to the new top of stack */
+        uint32_t *pPSP = (uint32_t *)tasks[i].stack_pointer;
+        /* Hardware exception frame — CPU pops these automatically on exception return */
+        *(--pPSP) = 0x01000000;                    /* xPSR: Thumb bit must be set */
+        *(--pPSP) = (uint32_t)tasks[i].task_func;  /* PC: task entry point */
+        *(--pPSP) = 0xFFFFFFFD;                    /* LR: return to Thread mode, use PSP */
+        *(--pPSP) = 0;                             /* R12 */
+        *(--pPSP) = 0;                             /* R3 */
+        *(--pPSP) = 0;                             /* R2 */
+        *(--pPSP) = 0;                             /* R1 */
+        *(--pPSP) = 0;                             /* R0 */
+        /* Software frame — PendSV saves/restores these manually */
+        for (int j = 0; j < 8; ++j)
+            *(--pPSP) = 0;                         /* R11–R4 */
+        tasks[i].stack_pointer = (volatile uint32_t *)pPSP;
     }
 }
 
-void save_psp_value(uint32_t current_psp_value){
-    psp_of_tasks[current_task_index] = current_psp_value;
+extern "C" void save_psp_value(uint32_t current_psp_value){
+    tasks[current_task_index].stack_pointer = (volatile uint32_t *)current_psp_value;
 }
 
-__attribute__((naked)) uint32_t get_psp_value(){
-    return psp_of_tasks[current_task_index];
+extern "C" uint32_t get_psp_value(){
+    return (uint32_t)tasks[current_task_index].stack_pointer;
 }
 
-void update_next_task(void){
+extern "C" void update_next_task(void){
     current_task_index = (current_task_index + 1) % MAX_TASKS;
 }
 
@@ -153,4 +156,40 @@ void dummy_task(void *)
     // {
     //     systick_delay_ms(1000);
     // }
+}
+
+void idle_task(void *)
+{
+    while (1)
+        __WFI();
+}
+
+
+/* ---- SysTick ---- */
+
+static volatile uint32_t global_ms_tick = 0;
+
+extern "C" void SysTick_Handler(void)
+{
+    global_ms_tick++;
+    // unblock_taks_waiting_on_tick(global_ms_tick);
+    // if (should_context_switch()) {
+    //     SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
+    // }
+}
+
+void systick_init(void)
+{
+    SysTick_Config(SystemCoreClock / 1000);
+}
+
+uint32_t systick_get_ms(void)
+{
+    return global_ms_tick;
+}
+
+void systick_delay_ms(uint32_t ms)
+{
+    uint32_t start = global_ms_tick;
+    while ((global_ms_tick - start) < ms);
 }

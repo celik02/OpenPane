@@ -6,16 +6,11 @@
 
 using TaskFunc = void(*)(void*);
 
-/* Defined once in rtos.cpp — extern here to avoid multiple-definition errors
- * when this header is included by more than one translation unit. */
-extern uint32_t psp_of_tasks[MAX_TASKS];
-extern uint32_t task_handles[MAX_TASKS];
-extern uint8_t current_task_index;
-
 void uart_task(void *);
 void led200_task(void *);
 void led500_task(void *);
 void dummy_task(void *);
+void idle_task(void *);
 
 enum class TaskState : uint8_t {
     READY,
@@ -34,13 +29,23 @@ struct TCB {
     uint8_t            pid;
 };
 
+extern TCB tasks[MAX_TASKS];
+extern uint8_t current_task_index;
+
 __attribute__((naked)) void init_scheduler_stack(uint32_t sched_top_of_stack);
 
 void init_tasks_stack(void);
-void update_next_task(void);
 void enable_processor_faults(void);
 __attribute__((naked)) void switch_sp_to_psp(void);
-__attribute__((naked)) uint32_t get_psp_value(void);
-__attribute__((naked)) void PendSV_Handler(void)
+__attribute__((naked)) void PendSV_Handler(void);
+
+extern "C" void     save_psp_value(uint32_t psp);
+extern "C" uint32_t get_psp_value(void);
+extern "C" void     update_next_task(void);
+
+/* ---- SysTick ---- */
+void     systick_init(void);
+uint32_t systick_get_ms(void);
+void     systick_delay_ms(uint32_t ms);
 
 #endif /* RTOS_HPP */

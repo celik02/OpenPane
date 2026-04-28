@@ -8,7 +8,7 @@
 #define SRAM_END             (SRAM_START + SRAM_SIZE)
 
 #define SIZEOF_STACK         1024U            /* bytes per task stack */
-#define MAX_TASKS            4U
+#define MAX_TASKS            5U
 #define SIZE_SCHEDULER_STACK 1024U
 
 /* Task stacks are laid out from the top of SRAM downward */
@@ -16,6 +16,7 @@
 #define T2_STACK_START        (T1_STACK_START - SIZEOF_STACK)
 #define T3_STACK_START        (T2_STACK_START - SIZEOF_STACK)
 #define T4_STACK_START        (T3_STACK_START - SIZEOF_STACK)
-#define SCHEDULER_STACK_START (T4_STACK_START - SIZEOF_STACK)
+#define IDLE_STACK_START      (T4_STACK_START - SIZEOF_STACK)
+#define SCHEDULER_STACK_START (IDLE_STACK_START - SIZEOF_STACK)
 
 #endif /* MEMORY_MAP_H */

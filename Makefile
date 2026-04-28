@@ -12,14 +12,12 @@ OPT   = -Og
 # Sources
 ######################################
 C_SOURCES = \
-src/system_stm32f4xx.c \
-src/syscalls.c \
-src/sysmem.c
+src/system_stm32f4xx.c
 
 CXX_SOURCES = \
 src/main.cpp \
 src/rtos.cpp \
-src/systick.cpp
+src/syscalls.cpp
 
 ASM_SOURCES = startup/startup_stm32f446xx.s
 
