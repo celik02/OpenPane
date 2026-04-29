@@ -37,7 +37,7 @@ __attribute__((naked)) void init_scheduler_stack(uint32_t sched_top_of_stack);
 void init_tasks_stack(void);
 void enable_processor_faults(void);
 __attribute__((naked)) void switch_sp_to_psp(void);
-__attribute__((naked)) void PendSV_Handler(void);
+extern "C" __attribute__((naked)) void PendSV_Handler(void);
 
 extern "C" void     save_psp_value(uint32_t psp);
 extern "C" uint32_t get_psp_value(void);

@@ -46,7 +46,7 @@ __attribute__((naked)) void init_scheduler_stack(uint32_t sched_top_of_stack)
 }
 
 
-__attribute__((naked)) void PendSV_Handler(void)
+extern "C" __attribute__((naked)) void PendSV_Handler(void)
 {
     __asm volatile (
         "PUSH {LR}\n"              /* save EXC_RETURN — tells CPU how to return from exception */
