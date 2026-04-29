@@ -23,6 +23,10 @@ void enable_processor_faults(void)
     SCB->SHCSR |= SCB_SHCSR_USGFAULTENA_Msk   /* UsageFault: div-by-zero, unaligned access, etc. */
                |  SCB_SHCSR_BUSFAULTENA_Msk    /* BusFault:   invalid memory access               */
                |  SCB_SHCSR_MEMFAULTENA_Msk;   /* MemManage:  MPU violations                      */
+
+    /* PendSV must be the lowest priority interrupt so it never preempts another
+     * handler mid-execution. SHP[10] maps to PendSV in the SHPR3 register. */
+    NVIC_SetPriority(PendSV_IRQn, 0xFF);
 }
 
 /* __attribute__((naked)) suppresses the compiler-generated function prologue and epilogue
@@ -128,34 +132,42 @@ __attribute__((naked)) void switch_sp_to_psp(void)
 
 void uart_task(void *)
 {
-    printf("Hello from UART Task!\n");
+    while (1)
+    {
+        printf("Hello from UART Task!\n");
+        systick_delay_ms(1000);
+    }
 }
 
 void led200_task(void *)
 {
-    // while (1)
-    // {
-    //     GPIOA->ODR ^= (1U << 5);
-    //     systick_delay_ms(200);
-    // }
+    /* Configure PA5 (LD2) as output */
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+    GPIOA->MODER &= ~(3U << (5 * 2));
+    GPIOA->MODER |=  (1U << (5 * 2));
+
+    while (1)
+    {
+        GPIOA->ODR ^= (1U << 5);
+        systick_delay_ms(200);
+    }
 }
 
 void led500_task(void *)
 {
-    // while (1)
-    // {
-    //     GPIOA->ODR ^= (1U << 5);
-    //     systick_delay_ms(500);
-    // }
+    while (1){
+        printf("<l5, 5>\n");
+        systick_delay_ms(500);
+    }
 }
 
 void dummy_task(void *)
 {
-    printf("Hello from Dummy Task!\n");
-    // while (1)
-    // {
-    //     systick_delay_ms(1000);
-    // }
+    while (1)
+    {
+        printf("Hello from Dummy Task!\n");
+        systick_delay_ms(2000);
+    }
 }
 
 void idle_task(void *)
@@ -172,6 +184,7 @@ static volatile uint32_t global_ms_tick = 0;
 extern "C" void SysTick_Handler(void)
 {
     global_ms_tick++;
+    SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;  /* request context switch */
     // unblock_taks_waiting_on_tick(global_ms_tick);
     // if (should_context_switch()) {
     //     SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;

@@ -43,6 +43,9 @@ extern "C" void     save_psp_value(uint32_t psp);
 extern "C" uint32_t get_psp_value(void);
 extern "C" void     update_next_task(void);
 
+/* ---- USART2 ---- */
+void usart2_init(void);
+
 /* ---- SysTick ---- */
 void     systick_init(void);
 uint32_t systick_get_ms(void);

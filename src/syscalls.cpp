@@ -31,13 +31,42 @@
 #include <sys/times.h>
 #include <stdint.h>
 #include <stddef.h>
+#include "stm32f4xx.h"
 
+
+/* ---- USART2 (ST-Link virtual COM port) ----
+ * PA2 = TX (AF7), PA3 = RX (AF7)
+ * Baud: 115200, 8N1
+ * BRR = fAPB1 / (16 * baud) = 16,000,000 / (16 * 115200) → mantissa=8, fraction=11 → 0x008B */
+void usart2_init(void)
+{
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+    RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
+
+    /* PA2=TX, PA3=RX → alternate function AF7 */
+    GPIOA->AFR[0] &= ~((0xFU << (2*4)) | (0xFU << (3*4)));
+    GPIOA->AFR[0] |=   (7U  << (2*4)) | (7U  << (3*4));
+
+    /* Set PA2 and PA3 to alternate function mode (0b10) */
+    GPIOA->MODER &= ~((3U << (2*2)) | (3U << (3*2)));
+    GPIOA->MODER |=   (2U << (2*2)) | (2U << (3*2));
+
+    USART2->CR1 = 0;
+    USART2->BRR = 0x008B;                          /* 115200 @ 16 MHz HSI */
+    USART2->CR1 = USART_CR1_TE | USART_CR1_UE;    /* enable TX and USART */
+}
 
 extern "C" {
 
 /* Variables */
-extern int __io_putchar(int ch) __attribute__((weak));
 extern int __io_getchar(void) __attribute__((weak));
+
+int __io_putchar(int ch)
+{
+    while (!(USART2->SR & USART_SR_TXE));  /* wait for TX buffer empty */
+    USART2->DR = (uint8_t)ch;
+    return ch;
+}
 
 
 char *__env[1] = { 0 };
