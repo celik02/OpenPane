@@ -172,6 +172,7 @@ void dummy_task(void *)
 
 void idle_task(void *)
 {
+    printf("IDLE Task!\n");
     while (1)
         __WFI();
 }
@@ -191,6 +192,12 @@ extern "C" void SysTick_Handler(void)
     // }
 }
 
+/*
+ * SysTick_Config sets LOAD = (ticks - 1), clears VAL, enables the counter
+ * and its interrupt using the processor clock.
+ * SystemCoreClock / 1000 ticks at 16 MHz HSI = 16000 ticks → fires every 1 ms.
+ * every tick is 1/16M seconds
+ */
 void systick_init(void)
 {
     SysTick_Config(SystemCoreClock / 1000);

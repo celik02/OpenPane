@@ -13,9 +13,9 @@
 ### Layer 1 — SysTick Timer
 
 * [X] Configure SysTick reload value for 1ms tick (`SysTick->LOAD = (SystemCoreClock / 1000) - 1`)
-* [ ] Enable SysTick with processor clock source
-* [ ] Implement `SysTick_Handler` as `extern "C"` in C++
-* [ ] Increment a global `volatile uint32_t g_tick` counter
+* [X] Enable SysTick with processor clock source
+* [X] Implement `SysTick_Handler` as `extern "C"` in C++
+* [X] Increment a global `volatile uint32_t g_tick` counter
 * [X] **Validate:** GPIO toggles at 500Hz on scope/logic analyzer
 
 ### Layer 2 — Task Stack Initialization
@@ -34,29 +34,29 @@
   * [ ] PC = correct task function address per task
   * [ ] LR = `0xFFFFFFFD` (EXC_RETURN, PSP, Thread mode)
   * [ ] R4–R11 slots below the frame are zero
-* [ ] **Validate:** TCB stack pointer values look correct in GDB memory view (do NOT run scheduler yet)
+* [X] **Validate:** TCB stack pointer values look correct in GDB memory view (do NOT run scheduler yet)
 
 ### Layer 3 — PendSV Context Switch
 
-* [ ] Implement `PendSV_Handler` in assembly
-  * [ ] Save R4–R11 onto current task's PSP
-  * [ ] Save PSP into `current_task->sp`
-  * [ ] Call `scheduler_next_task()` to advance current task pointer
-  * [ ] Load PSP from new task's `sp`
-  * [ ] Load R4–R11 from new task's stack
-  * [ ] `BX LR` to return
-* [ ] Set PendSV to lowest priority: `NVIC_SetPriority(PendSV_IRQn, 0xFF)`
-* [ ] Trigger PendSV from SysTick: `SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk`
-* [ ] Implement first-launch bootstrap (switch MSP → PSP, jump to first task)
-* [ ] **Validate:** Two tasks blinking LEDs at different rates, both confirmed over UART
+* [X] Implement `PendSV_Handler` in assembly
+  * [X] Save R4–R11 onto current task's PSP
+  * [X] Save PSP into `current_task->sp`
+  * [X] Call `scheduler_next_task()` to advance current task pointer
+  * [X] Load PSP from new task's `sp`
+  * [X] Load R4–R11 from new task's stack
+  * [X] `BX LR` to return
+* [X] Set PendSV to lowest priority: `NVIC_SetPriority(PendSV_IRQn, 0xFF)`
+* [X] Trigger PendSV from SysTick: `SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk`
+* [X] Implement first-launch bootstrap (switch MSP → PSP, jump to first task)
+* [X] **Validate:** Two tasks blinking LEDs at different rates, both confirmed over UART
 
 ### Layer 4 — Round-Robin Scheduler
 
-* [ ] Define `task_list[MAX_TASKS]` and `current_task_idx`
-* [ ] Implement `scheduler_next_task()` — circular index, skip BLOCKED tasks
-* [ ] Implement `scheduler_start()` — init PSP, set first task, enable SysTick
+* [X] Define `task_list[MAX_TASKS]` and `current_task_idx`
+* [X] Implement `scheduler_next_task()` — circular index, skip BLOCKED tasks
+* [X] Implement `scheduler_start()` — init PSP, set first task, enable SysTick
 * [ ] Protect task list access with `__disable_irq()` / `__enable_irq()` (or BASEPRI)
-* [ ] **Validate:** All 4 tasks running, UART shows round-robin order, LEDs at correct frequencies
+* [X] **Validate:** All 4 tasks running, UART shows round-robin order, LEDs at correct frequencies
 
 ### Layer 5 — Mutex
 
@@ -69,14 +69,14 @@
 
 ### Phase 1 Debugging Checklist
 
-* [ ] SysTick toggling GPIO at 500Hz (logic analyzer confirmed)
-* [ ] TCB stack pointer values correct in GDB memory view
-* [ ] EXC_RETURN value in PendSV LR is `0xFFFFFFFD`
-* [ ] PendSV priority is `0xFF` (lowest)
-* [ ] First task launch switches from MSP to PSP successfully
-* [ ] Two tasks running concurrently (LED blink proof)
+* [X] SysTick toggling GPIO at 500Hz (logic analyzer confirmed)
+* [X] TCB stack pointer values correct in GDB memory view
+* [X] EXC_RETURN value in PendSV LR is `0xFFFFFFFD`
+* [X] PendSV priority is `0xFF` (lowest)
+* [X] First task launch switches from MSP to PSP successfully
+* [X] Two tasks running concurrently (LED blink proof)
 * [ ] UART output not garbled with mutex in place
-* [ ] Dummy task does not starve other tasks (round-robin confirmed)
+* [X] Dummy task does not starve other tasks (round-robin confirmed)
 
 ---
 
