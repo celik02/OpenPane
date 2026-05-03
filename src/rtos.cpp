@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <stdint.h>
 
+
 TCB tasks[MAX_TASKS] = {
     { (volatile uint32_t *)T1_STACK_START,   uart_task,   TaskState::READY, 0,   "uart",   (uint32_t *)(T1_STACK_START   - SIZEOF_STACK), SIZEOF_STACK, 0 },
     { (volatile uint32_t *)T2_STACK_START,   led200_task, TaskState::READY, 1,   "led200", (uint32_t *)(T2_STACK_START   - SIZEOF_STACK), SIZEOF_STACK, 1 },
@@ -101,40 +102,81 @@ extern "C" uint32_t get_psp_value(){
     return (uint32_t)tasks[current_task_index].stack_pointer;
 }
 
-extern "C" void update_next_task(void){
-    current_task_index = (current_task_index + 1) % MAX_TASKS;
+/* Walk the real tasks (0..MAX_TASKS-2) in round-robin order starting after the
+ * current task. Pick the first one whose state is READY.
+ * If every real task is BLOCKED, fall through to the idle task (MAX_TASKS-1).
+ * Idle is never BLOCKED — it always runs when nothing else can. */
+extern "C" void update_next_task(void) {
+    uint8_t real_tasks = MAX_TASKS - 1;  /* idle is the last slot, not part of rotation */
+
+    for (uint8_t i = 1; i <= real_tasks; i++) {
+        uint8_t candidate = (current_task_index + i) % real_tasks;
+        if (tasks[candidate].state == TaskState::READY) {
+            current_task_index = candidate;
+            return;
+        }
+    }
+
+    current_task_index = MAX_TASKS - 1;  /* all real tasks blocked — run idle */
 }
 
-/* Switch the active stack pointer from MSP to PSP.
- * After reset the CPU uses MSP for everything. Calling this before starting the
- * scheduler ensures tasks run on PSP, keeping task stacks isolated from the
- * scheduler's MSP stack. Must be called after PSP is initialized for the first task. */
-__attribute__((naked)) void switch_sp_to_psp(void)
+/* Issue SVC #0 to hand control to SVC_Handler, which performs the first task launch.
+ * This function never returns — once SVC_Handler does its exception return it jumps
+ * directly into task 0's entry point. */
+void scheduler_start(void)
 {
-    //1. initialize PSP to the first task's stack pointer
-    __asm volatile ("PUSH {LR}"); // save LR since we're naked and will clobber it
-    __asm volatile ("BL get_psp_value"); // get current task's PSP value into R0
-    __asm volatile ("MSR PSP, R0"); // set PSP to the task's stack pointer
-    __asm volatile ("POP {LR}"); // restore LR
+    __asm volatile ("SVC #0");
+}
 
-    //2. switch to PSP by setting CONTROL register bit 1
+/* SVC_Handler — fires immediately when scheduler_start() issues SVC #0.
+ *
+ * Goal: jump into task 0 as if PendSV had just restored it from a prior run.
+ * We are in Handler mode here, so BX LR is a real exception return that makes
+ * the hardware pop a stack frame — exactly what we need to bootstrap the first task.
+ *
+ * Step-by-step:
+ *   1. get_psp_value() returns tasks[0].stack_pointer, which points to the TOP of
+ *      task 0's fake software frame (the R11 slot planted by init_tasks_stack).
+ *   2. LDMIA pops R4–R11 from that software frame, advancing R0 past them so it
+ *      now points to the start of the fake hardware frame (the R0 slot).
+ *   3. MSR PSP, R0 — sets PSP to that address. When we do the exception return
+ *      the CPU will pop {R0-R3,R12,LR,PC,xPSR} from here, landing in uart_task().
+ *   4. CONTROL |= 2 — tells the CPU to use PSP in Thread mode from now on.
+ *      All tasks will run on their own PSP stacks; only handlers use MSP.
+ *   5. MVN LR, #2 — sets LR to 0xFFFFFFFD (bitwise NOT of 2).
+ *      This is the EXC_RETURN magic value meaning:
+ *        "return to Thread mode and use PSP as the stack pointer".
+ *      We cannot keep the original LR value because the SVC was called from
+ *      Thread/MSP mode, so the CPU put 0xFFFFFFF9 in LR (return to Thread/MSP).
+ *      We override it to 0xFFFFFFFD so the hardware pops from PSP instead.
+ *   6. BX LR — triggers the exception return. Hardware pops the fake frame from
+ *      PSP, restoring R0-R3/R12/LR/PC/xPSR, and execution begins at uart_task(). */
+extern "C" __attribute__((naked)) void SVC_Handler(void)
+{
     __asm volatile (
-        "MRS R0, CONTROL\n"   /* Read CONTROL register into R0 */
-        "ORR R0, R0, #2\n"    /* Set bit 1 to select PSP */
-        "MSR CONTROL, R0\n"   /* Write back to CONTROL register */
-        "ISB\n"              /* Instruction Synchronization Barrier to ensure the change takes effect immediately */
-        "BX LR\n"           /* Return from function */
-        :
-        :
-        : "r0"  // clobber R0 since we're using it to manipulate CONTROL
+        "BL  get_psp_value\n"       /* R0 = tasks[0].stack_pointer (top of SW frame) */
+        "LDMIA R0!, {R4-R11}\n"    /* pop software frame (R11..R4); R0 now → HW frame */
+        "MSR PSP, R0\n"             /* PSP now points at the fake hardware frame */
+
+        "MRS R0, CONTROL\n"
+        "ORR R0, R0, #2\n"          /* CONTROL.SPSEL = 1 → Thread mode uses PSP */
+        "MSR CONTROL, R0\n"
+        "ISB\n"                     /* barrier — CONTROL change must be visible before BX */
+
+        "MVN LR, #2\n"              /* LR = ~2 = 0xFFFFFFFD (EXC_RETURN: Thread + PSP) */
+        "BX  LR\n"                  /* exception return → CPU pops HW frame → uart_task() */
     );
 }
+
+/* defined in the SysTick section below; declared here so task functions can read them */
+extern volatile uint32_t global_ms_tick;
+extern volatile uint32_t idle_count;
 
 void uart_task(void *)
 {
     while (1)
     {
-        printf("Hello from UART Task!\n");
+        printf("tick=%lu  idle_hits=%lu\n", global_ms_tick, idle_count);
         systick_delay_ms(1000);
     }
 }
@@ -169,27 +211,36 @@ void dummy_task(void *)
         systick_delay_ms(2000);
     }
 }
+volatile uint32_t global_ms_tick = 0;
+volatile uint32_t idle_count = 0;
 
 void idle_task(void *)
 {
-    printf("IDLE Task!\n");
     while (1)
+    {
+        idle_count++;
         __WFI();
+    }
 }
 
 
 /* ---- SysTick ---- */
 
-static volatile uint32_t global_ms_tick = 0;
+
 
 extern "C" void SysTick_Handler(void)
 {
     global_ms_tick++;
-    SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;  /* request context switch */
-    // unblock_taks_waiting_on_tick(global_ms_tick);
-    // if (should_context_switch()) {
-    //     SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
-    // }
+
+    /* Wake any task whose delay has expired. We only check real tasks (not idle)
+     * because idle is never put to sleep — it runs whenever nothing else can. */
+    for (uint8_t i = 0; i < MAX_TASKS - 1; i++) {
+        if (tasks[i].state == TaskState::BLOCKED && global_ms_tick >= tasks[i].wake_tick) {
+            tasks[i].state = TaskState::READY;
+        }
+    }
+
+    SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;  /* request context switch every tick */
 }
 
 /*
@@ -208,8 +259,23 @@ uint32_t systick_get_ms(void)
     return global_ms_tick;
 }
 
+/* Block the calling task for `ms` milliseconds.
+ *
+ * Instead of spinning (busy-wait), we mark this task BLOCKED and set its
+ * wake_tick. Then we pend PendSV to yield the CPU immediately — the scheduler
+ * will skip us and run whoever is READY next (or idle if nobody is).
+ *
+ * When SysTick_Handler sees global_ms_tick >= wake_tick it sets us back to
+ * READY. The next PendSV will pick us up and resume right after the SCB write
+ * below, which returns to the caller as if the delay had just finished. */
 void systick_delay_ms(uint32_t ms)
 {
-    uint32_t start = global_ms_tick;
-    while ((global_ms_tick - start) < ms);
+    tasks[current_task_index].wake_tick = global_ms_tick + ms;
+    tasks[current_task_index].state     = TaskState::BLOCKED;
+
+    /* Yield: pend PendSV so the scheduler switches away from us immediately.
+     * __DSB() ensures the state/wake_tick writes reach memory before the
+     * PendSV request is seen by the hardware. */
+    __DSB();
+    SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
 }

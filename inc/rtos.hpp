@@ -27,6 +27,7 @@ struct TCB {
     uint32_t          *stack_base;    /* base of allocated stack (for bounds checking) */
     uint32_t           stack_size;
     uint8_t            pid;
+    uint32_t           wake_tick;     /* global_ms_tick value at which this task unblocks */
 };
 
 extern TCB tasks[MAX_TASKS];
@@ -36,7 +37,8 @@ __attribute__((naked)) void init_scheduler_stack(uint32_t sched_top_of_stack);
 
 void init_tasks_stack(void);
 void enable_processor_faults(void);
-__attribute__((naked)) void switch_sp_to_psp(void);
+void scheduler_start(void);
+extern "C" __attribute__((naked)) void SVC_Handler(void);
 extern "C" __attribute__((naked)) void PendSV_Handler(void);
 
 extern "C" void     save_psp_value(uint32_t psp);
