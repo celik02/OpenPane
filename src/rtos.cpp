@@ -1,7 +1,10 @@
 #include "rtos.hpp"
+#include "sync.hpp"
 #include "stm32f4xx.h"
 #include <cstdio>
 #include <stdint.h>
+
+Mutex uart_mutex;
 
 
 TCB tasks[MAX_TASKS] = {
@@ -176,7 +179,9 @@ void uart_task(void *)
 {
     while (1)
     {
+        uart_mutex.lock();
         printf("tick=%lu  idle_hits=%lu\n", global_ms_tick, idle_count);
+        uart_mutex.unlock();
         systick_delay_ms(1000);
     }
 }
@@ -198,7 +203,9 @@ void led200_task(void *)
 void led500_task(void *)
 {
     while (1){
+        uart_mutex.lock();
         printf("<l5, 5>\n");
+        uart_mutex.unlock();
         systick_delay_ms(500);
     }
 }
@@ -207,8 +214,10 @@ void dummy_task(void *)
 {
     while (1)
     {
+        uart_mutex.lock();
         printf("Hello from Dummy Task!\n");
-        systick_delay_ms(2000);
+        uart_mutex.unlock();
+        systick_delay_ms(200);
     }
 }
 volatile uint32_t global_ms_tick = 0;

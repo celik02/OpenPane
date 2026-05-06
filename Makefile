@@ -17,7 +17,8 @@ src/system_stm32f4xx.c
 CXX_SOURCES = \
 src/main.cpp \
 src/rtos.cpp \
-src/syscalls.cpp
+src/syscalls.cpp \
+src/sync.cpp
 
 ASM_SOURCES = startup/startup_stm32f446xx.s
 
